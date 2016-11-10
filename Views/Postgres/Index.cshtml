@@ -1,0 +1,158 @@
+﻿@{
+    ViewData["Title"] = "Web Traffic";
+}
+
+<input type="hidden" id="clientID" value="@String.Format("{0}", ViewBag.ClientID)" />
+<div class="container-fluid" style="padding:0px;margin-top:1%;">
+    <div class="col-md-12" style="padding:0px;margin-top:2%;vertical-align:middle">
+        <div class="col-md-5" style="padding:0px;">
+            <p style="text-align:center;font-weight:bold;">Postgres (FX-VIP)</p>
+            <div class="table-responsive" style="max-height:450px;overflow-y: auto;padding:0px;">
+                <table id="postgresDataTable" class="table-bordered" style="width:100%;min-height:450px;"></table>
+            </div>
+            <p style="text-align:center;font-weight:bold;color:orange;margin-top:10px;" id="postgresMessage">&nbsp;</p>
+        </div>
+        <div class="col-md-2" style="height:400px;margin-top:13%;">
+            <input id="btnReadWebTrafficByClientID" type="button" value="Read Postgres Web Traffic" class="btn-custom" style="width:100%;" />
+            <input id="btnFlagContactAsBrowser" type="button" value="Flag Contact as Web VIP" class="btn-custom" style="width:100%;margin-top:10%;" />
+            <input id="btnResetWebFlagFor" type="button" value="Reset Web VIP Flag" class="btn-custom" style="width:100%;margin-top:10%;" />
+        </div>
+        <div class="col-md-5" style="padding:0px">
+            <p style="text-align:center;font-weight:bold;">Heroku Connect (salesforce.contact)</p>
+            <div class="table-responsive" style="max-height:450px;overflow-y: auto;padding:0px;">
+                <table id="herokuDataTable" class="table-bordered" style="width:100%;min-height:450px;"></table>
+            </div>
+            <p style="text-align:center;font-weight:bold;color:green;margin-top:10px;" id="herokuMessage">&nbsp;</p>
+        </div>
+    </div>
+</div>
+
+@section Scripts{
+    <script type="text/javascript">
+        var urlReadAction = '/Postgres/ReadWebTrafficByClientID';
+        var urlFlagContactAsBrowserAction = '/Postgres/FlagContactAsBrowser';
+        var urlResetWebFlagForAction = '/Postgres/ResetWebFlagFor';
+        var isSentData = false;
+        var startProcess, btnText, btnBgColor;
+        var postgresMessage = [], SFContacts = [];
+
+        $(function () {
+            $('#spinner').hide();
+            bindPostgresDataTable();
+            bindContactDataTable(false);
+            $('#btnReadWebTrafficByClientID').on('click', function (e) {
+                setActiveButtonBG($(this));
+                resetTrafficTable(true);
+                resetTrafficTable(false);
+                readPostgresMessage();
+            });
+            $('#btnFlagContactAsBrowser').on('click', function (e) {
+                if (postgresMessage == undefined || (postgresMessage && postgresMessage.length == 0))
+                    return;
+                setActiveButtonBG($(this));
+                resetTrafficTable(false);
+                readSFContact();
+            });
+            $('#btnResetWebFlagFor').on('click', function (e) {
+                if (SFContacts == undefined || (SFContacts && SFContacts.length == 0))
+                    return;
+                setActiveButtonBG($(this));
+                resetTrafficTable(false);
+                updatSFContact();
+            });
+        });
+
+        function setActiveButtonBG(activeButton) {
+            $('input[type=button]').each(function () {
+                if ($(this).attr('id') == activeButton.attr('id'))
+                    $(this).addClass('btn-custom2');
+                else {
+                    $(this).removeClass('btn-custom2');
+                }
+            })
+        }
+
+        function resetTrafficTable(isPostgres) {
+            var trafficTable = isPostgres ? $('#postgresDataTable') : $('#herokuDataTable');
+            trafficTable.find("tr").remove();
+            trafficTable.append("<tr class='emptyrow'><td style='text-align:center;'>No Record Found</td></tr>");
+            if (isPostgres)
+                $('#postgresMessage').html('');
+            else
+                $('#herokuMessage').html('');
+        }
+
+        function bindPostgresDataTable() {
+            var tableDataRow;
+            var trafficTable = $('#postgresDataTable');
+            trafficTable.find('tr').remove();
+            tableDataRow = trafficTable.find("tr");
+            if (postgresMessage && postgresMessage.length > 0) {
+                for (var i = 0; i < postgresMessage.length; i++) {
+                    if (postgresMessage[i].message) {
+                        trafficTable.append("<tr><td style='border-bottom: 1px solid #ddd;'><div class='wrapword'>" + postgresMessage[i].message + "</div></td></tr>");
+                        tableDataRow = trafficTable.find("tr");
+                    }
+                }
+                $('#postgresMessage').html("Messages Digested by Postgres for Contact '" + $('#clientID').val() + "'");
+            }
+
+            if (tableDataRow.length == 0) {
+                trafficTable.append("<tr class='emptyrow'><td style='text-align:center;'>No Record Found</td></tr>");
+            }
+        }
+
+        function bindContactDataTable(isReset) {
+            var tableDataRow;
+            var trafficTable = $('#herokuDataTable');
+            trafficTable.find('tr').remove();
+            tableDataRow = trafficTable.find("tr");
+            if (SFContacts && SFContacts.length > 0) {
+                for (var i = 0; i < SFContacts.length; i++) {
+                    if (SFContacts[i]) {
+                        if (isReset)
+                            SFContacts[i].browsed_vip_website__c = false;
+                        trafficTable.append("<tr><td style='border-bottom: 1px solid #ddd;vertical-align:top;'><div class='wrapword'>" + JSON.stringify(SFContacts[i]) + "</div></td></tr>");
+                        tableDataRow = trafficTable.find("tr");
+                    }
+                }
+                if (isReset)
+                    $('#herokuMessage').html("Salesforce VIP Web User flag being reset for Contact '" + $('#clientID').val() + "'");
+                else
+                    $('#herokuMessage').html("Salesforce VIP Web User flag being set for Contact '" + $('#clientID').val() + "'");
+            }
+
+            if (tableDataRow.length == 0) {
+                trafficTable.append("<tr class='emptyrow'><td style='text-align:center;'>No Record Found</td></tr>");
+            }
+        }
+
+        function readPostgresMessage() {
+            postgresMessage = [];
+            $('#spinner').show();
+            $.post(urlReadAction, null, function (data) {
+                $('#spinner').hide();
+                postgresMessage = data;
+                bindPostgresDataTable()
+            });
+        }
+
+        function readSFContact() {
+            $('#spinner').show();
+            $.post(urlFlagContactAsBrowserAction, null, function (data) {
+                $('#spinner').hide();
+                SFContacts = data;
+                bindContactDataTable(false)
+            });
+        }
+
+        function updatSFContact() {
+            $('#spinner').show();
+            $.post(urlResetWebFlagForAction, null, function (data) {
+                $('#spinner').hide();
+                console.log(data);
+                bindContactDataTable(true)
+            });
+        }
+    </script>
+}
